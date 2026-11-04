@@ -230,12 +230,6 @@ async function run() {
   await sendNotification(message, tomorrow)
 }
 
-
-  const message = generateMessage(schedule, data.update)
-
-  await sendNotification(message)
-}
-
 run().catch((error) => {
   console.error(error.message)
   process.exitCode = 1
