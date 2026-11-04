@@ -59,21 +59,32 @@ export function checkIsNight() {
   return hours >= 22 || hours < 8
 }
 
-
 export function loadLastMessage() {
   if (!fs.existsSync(LAST_MESSAGE_FILE)) return null
 
-  return JSON.parse(
+  const lastMessage = JSON.parse(
     fs.readFileSync(LAST_MESSAGE_FILE, "utf8").trim()
   )
+
+  if (lastMessage?.date) {
+    const messageDay = new Date(lastMessage.date * 1000).toLocaleDateString(
+      "en-CA",
+      { timeZone: "Europe/Kyiv" }
+    )
+    const today = new Date().toLocaleDateString("en-CA", {
+      timeZone: "Europe/Kyiv",
+    })
+
+    if (messageDay < today) {
+      deleteLastMessage()
+      return null
+    }
+  }
+
+  return lastMessage
 }
 
-export function saveLastMessage({
-  date,
-  message_id,
-  scheduleText,
-  scheduleDate,
-} = {}) {
+export function saveLastMessage({ date, message_id, scheduleText } = {}) {
   fs.mkdirSync(path.dirname(LAST_MESSAGE_FILE), { recursive: true })
   fs.writeFileSync(
     LAST_MESSAGE_FILE,
@@ -81,7 +92,10 @@ export function saveLastMessage({
       message_id,
       date,
       scheduleText,
-      scheduleDate,
     })
   )
+}
+
+export function deleteLastMessage() {
+  fs.rmSync(LAST_MESSAGE_FILE, { force: true })
 }
