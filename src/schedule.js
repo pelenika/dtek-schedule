@@ -120,7 +120,7 @@ function generateMessage(schedule = [], update) {
   ].join("\n")
 
   const text = [
-    `⚡️ <b>Графік відключень на сьогодні:</b>`,
+    `⚡️ <b>Графік відключень на завтра:</b>`,
     scheduleText,
     "",
     `📢 <i>${update}</i>`,
@@ -197,21 +197,20 @@ async function sendNotification({ text, scheduleText }) {
 
 async function run() {
   const data = await getShutdownsData()
-  const tomorrow = String(Number(data.today) + 86400)
-  const states = data.data?.[tomorrow]?.[GROUP]
 
-  console.log("TOMORROW:", tomorrow)
-  console.log("GROUP:", GROUP)
-  console.log("TOMORROW STATES:", JSON.stringify(states ?? null))
-  return
-  
-  const groups = data.data?.[data.today] ?? {}
-  if (!Object.keys(groups).length) {
-    console.log("🔋 No schedule for today.")
+  const tomorrow = String(Number(data.today) + 86400)
+  const groups = data.data?.[tomorrow] ?? {}
+
+  if (!groups[GROUP]) {
+    console.log("🟡 No schedule for tomorrow.")
     return
   }
 
-  const schedule = generateSchedule(data)
+  const schedule = generateSchedule({
+    data: data.data,
+    today: tomorrow,
+  })
+
   const message = generateMessage(schedule, data.update)
 
   await sendNotification(message)
