@@ -197,7 +197,11 @@ async function sendNotification({ text, scheduleText }) {
 
 async function run() {
   const data = await getShutdownsData()
-
+  console.log("TODAY:", data.today)
+  console.log("AVAILABLE DATES:", Object.keys(data.data ?? {}))
+  console.log("GROUP:", GROUP)
+  return
+  
   const groups = data.data?.[data.today] ?? {}
   if (!Object.keys(groups).length) {
     console.log("🔋 No schedule for today.")
