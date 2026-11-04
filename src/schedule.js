@@ -130,79 +130,93 @@ function generateMessage(schedule = [], update) {
   return { text, scheduleText }
 }
 
-async function sendNotification({ text, scheduleText }) {
-  if (!TELEGRAM_BOT_TOKEN) throw Error("❌ Missing telegram bot token.")
-  if (!TELEGRAM_CHAT_ID) throw Error("❌ Missing telegram chat id.")
 
-  console.log("🌀 Sending notification...")
+async function sendNotification({ text, scheduleText }, scheduleDate) {
+  if (!TELEGRAM_BOT_TOKEN) throw Error("Missing telegram bot token.")
+  if (!TELEGRAM_CHAT_ID) throw Error("Missing telegram chat id.")
 
   const lastMessage = loadLastMessage() || {}
-  const isScheduleChanged = lastMessage.scheduleText !== scheduleText
-  const isEdit = Boolean(lastMessage.message_id) && !isScheduleChanged
-  const isReply = Boolean(lastMessage.message_id) && isScheduleChanged
 
-  try {
-    const response = await fetch(
-      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/${
-        isEdit ? "editMessageText" : "sendMessage"
-      }`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: TELEGRAM_CHAT_ID,
-          text,
-          parse_mode: "HTML",
-          disable_notification: checkIsNight(),
-          message_id: isEdit ? lastMessage.message_id : undefined,
-          reply_parameters: isReply
-            ? {
-                message_id: lastMessage.message_id,
-                allow_sending_without_reply: true,
-              }
-            : undefined,
-        }),
+  if (
+    lastMessage.scheduleDate === scheduleDate &&
+    lastMessage.scheduleText === scheduleText
+  ) {
+    console.log("🟡 Schedule unchanged. Skipping notification.")
+    return
+  }
+
+  const isUpdate =
+    lastMessage.scheduleDate === scheduleDate &&
+    lastMessage.scheduleText !== scheduleText
+
+  const finalText = isUpdate
+    ? "🔄 <b>Оновлений графік</b>\n\n" + text
+    : text
+
+  for (let attempt = 1; attempt <= RETRIES_MAX_COUNT; attempt++) {
+    try {
+      const response = await fetch(
+        `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: TELEGRAM_CHAT_ID,
+            text: finalText,
+            parse_mode: "HTML",
+            disable_notification: checkIsNight(),
+          }),
+        }
+      )
+
+      const result = await response.json()
+
+      if (!result.ok) {
+        throw Error(result.description || "Telegram error")
       }
-    )
 
-    const data = await response.json()
+      saveLastMessage({
+        ...result.result,
+        scheduleText,
+        scheduleDate,
+      })
 
-    if (data.description?.includes("not modified")) {
-      console.log("🟡 Notification not changed.")
+      console.log("🟢 Notification sent.")
       return
+    } catch (error) {
+      console.error(`Attempt ${attempt}: ${error.message}`)
+
+      if (attempt === RETRIES_MAX_COUNT) throw error
+
+      await new Promise((resolve) =>
+        setTimeout(resolve, RETRIES_TIMEOUT)
+      )
     }
-    if (!data.ok) {
-      deleteLastMessage()
-      throw Error(data.description)
-    }
-
-    saveLastMessage({ ...data.result, scheduleText })
-
-    console.log("🟢 Notification sent.")
-  } catch (error) {
-    console.error(`❌ Sending notification failed: ${error.message}.`)
-
-    if (sendNotificationRetries < RETRIES_MAX_COUNT) {
-      console.log("🌀 Try sending notification again...")
-      await new Promise((resolve) => setTimeout(resolve, RETRIES_TIMEOUT))
-      sendNotificationRetries++
-      return await sendNotification({ text, scheduleText })
-    }
-
-    throw Error(
-      `❌ Sending notification failed after ${RETRIES_MAX_COUNT} retries.`
-    )
   }
 }
 
+
 async function run() {
+  const now = new Date()
+
+  const kyivHour = Number(
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Europe/Kyiv",
+      hour: "2-digit",
+      hourCycle: "h23",
+    }).format(now)
+  )
+
+  if (kyivHour < 21) {
+    console.log("🟡 Before 21:00 Kyiv. Skipping.")
+    return
+  }
+
   const data = await getShutdownsData()
-
   const tomorrow = String(Number(data.today) + 86400)
-  const groups = data.data?.[tomorrow] ?? {}
 
-  if (!groups[GROUP]) {
-    console.log("🟡 No schedule for tomorrow.")
+  if (!data.data?.[tomorrow]?.[GROUP]) {
+    console.log("🟡 Tomorrow schedule not published yet.")
     return
   }
 
@@ -210,6 +224,12 @@ async function run() {
     data: data.data,
     today: tomorrow,
   })
+
+  const message = generateMessage(schedule, data.update)
+
+  await sendNotification(message, tomorrow)
+}
+
 
   const message = generateMessage(schedule, data.update)
 
