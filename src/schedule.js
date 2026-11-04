@@ -197,9 +197,12 @@ async function sendNotification({ text, scheduleText }) {
 
 async function run() {
   const data = await getShutdownsData()
-  console.log("TODAY:", data.today)
-  console.log("AVAILABLE DATES:", Object.keys(data.data ?? {}))
+  const tomorrow = String(Number(data.today) + 86400)
+  const states = data.data?.[tomorrow]?.[GROUP]
+
+  console.log("TOMORROW:", tomorrow)
   console.log("GROUP:", GROUP)
+  console.log("TOMORROW STATES:", JSON.stringify(states ?? null))
   return
   
   const groups = data.data?.[data.today] ?? {}
